@@ -1,7 +1,7 @@
 SPK_NAME = python
 SPK_SHORT_VERS = 2.7
-SPK_VERS = $(SPK_SHORT_VERS).15
-SPK_REV = 20
+SPK_VERS = $(SPK_SHORT_VERS).16
+SPK_REV = 21
 SPK_ICON = src/python.png
 
 DEPENDS  = cross/busybox cross/$(SPK_NAME)
@@ -24,7 +24,7 @@ DESCRIPTION_SPN = Lenguaje de programación Python 2.7.
 RELOAD_UI = yes
 STARTABLE = no
 DISPLAY_NAME = Python
-CHANGELOG = "1. Update to Python 2.7.15<br>2. Update modules"
+CHANGELOG = "1. Update to Python 2.7.16"
 
 HOMEPAGE = http://www.python.org
 LICENSE  = PSF
