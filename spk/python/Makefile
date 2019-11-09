@@ -1,6 +1,6 @@
 SPK_NAME = python
 SPK_SHORT_VERS = 2.7
-SPK_VERS = $(SPK_SHORT_VERS).16
+SPK_VERS = $(SPK_SHORT_VERS).17
 SPK_REV = 21
 SPK_ICON = src/python.png
 
