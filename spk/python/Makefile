@@ -24,7 +24,7 @@ DESCRIPTION_SPN = Lenguaje de programación Python 2.7.
 RELOAD_UI = yes
 STARTABLE = no
 DISPLAY_NAME = Python
-CHANGELOG = "1. Update to Python 2.7.16"
+CHANGELOG = "1. Update to Python 2.7.17"
 
 HOMEPAGE = http://www.python.org
 LICENSE  = PSF
