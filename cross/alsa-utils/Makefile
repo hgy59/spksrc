@@ -1,5 +1,5 @@
 PKG_NAME = alsa-utils
-PKG_VERS = 1.0.26
+PKG_VERS = 1.2.1
 PKG_EXT = tar.bz2
 PKG_DIR = $(PKG_NAME)-$(PKG_VERS)
 PKG_DIST_NAME = $(PKG_DIR).$(PKG_EXT)
@@ -13,19 +13,19 @@ LICENSE  =
 
 GNU_CONFIGURE = 1
 CONFIGURE_ARGS = --with-curses=ncurses
-CONFIGURE_TARGET = myConfigure
-INSTALL_TARGET = myInstall
+CONFIGURE_TARGET = alsa-utils_configure
+INSTALL_TARGET =  alsa-utils_install
+
 
 include ../../mk/spksrc.cross-cc.mk
 
-.PHONY: myConfigure
-myConfigure:
-	sed -i.orig $(INSTALL_DIR)/$(INSTALL_PREFIX)/bin/ncurses5-config \
+.PHONY: alsa-utils_configure
+alsa-utils_configure:
+	sed -i.orig $(INSTALL_DIR)/$(INSTALL_PREFIX)/bin/ncurses6-config \
 	    -e 's#^prefix=".*"$$#prefix="$(INSTALL_DIR)/$(INSTALL_PREFIX)"#'
 	$(RUN) PATH=$(INSTALL_DIR)/$(INSTALL_PREFIX)/bin/:$(PATH) ./configure $(REAL_CONFIGURE_ARGS)
-	mv $(INSTALL_DIR)/$(INSTALL_PREFIX)/bin/ncurses5-config.orig $(INSTALL_DIR)/$(INSTALL_PREFIX)/bin/ncurses5-config
+	mv $(INSTALL_DIR)/$(INSTALL_PREFIX)/bin/ncurses6-config.orig $(INSTALL_DIR)/$(INSTALL_PREFIX)/bin/ncurses6-config
 
-.PHONY: myInstall
-myInstall:
+.PHONY: alsa-utils_install
+alsa-utils_install:
 	$(RUN) make install DESTDIR=$(INSTALL_DIR)
-
