@@ -4,7 +4,7 @@ SPK_GIT_HASH = 221c29b
 SPK_GIT_DATE = 20191128
 SPK_VERS = $(SPK_SHORT_VERS).$(SPK_GIT_DATE)~$(SPK_GIT_HASH)
 TVH_VERS = $(SPK_SHORT_VERS)~$(SPK_GIT_HASH)
-SPK_REV = 17
+SPK_REV = 19
 SPK_ICON = src/tvheadend.png
 DSM_UI_DIR = app
 
@@ -20,7 +20,7 @@ DESCRIPTION = Tvheadend is a TV streaming server and recorder for Linux, FreeBSD
 RELOAD_UI = yes
 DISPLAY_NAME = Tvheadend
 STARTABLE = yes
-CHANGELOG = "1. Use latest github commit on 4.3 branch 221c29b<br/>2. Update all trivial dependencies to latest versions<br/>3. New package built on m4tt075 v4.28 version"
+CHANGELOG = "1. Update to latest version of libhdhomerun<br/>2. qoriq arch fix<br/>3. SurveillanceStation-DSCam fix for issue no. 3868"
 HOMEPAGE = https://tvheadend.org/
 LICENSE = GPL v3
 
@@ -62,7 +62,7 @@ FFMPEG_LIBS = libavfilter.pc libpostproc.pc libswresample.pc libavresample.pc li
 
 tvheadend_pre_depend:
 	mkdir -p $(STAGING_INSTALL_PREFIX)/lib/pkgconfig/
-	$(foreach lib,$(FFMPEG_LIBS),ln -s $(FFMPEG_DIR)/lib/pkgconfig/$(lib) $(STAGING_INSTALL_PREFIX)/lib/pkgconfig/ ;)
+	$(foreach lib,$(FFMPEG_LIBS),ln -sfT $(FFMPEG_DIR)/lib/pkgconfig/$(lib) $(STAGING_INSTALL_PREFIX)/lib/pkgconfig/$(lib) ;)
 
 tvheadend_extra_install:
 	install -m 755 -d $(STAGING_DIR)/var
