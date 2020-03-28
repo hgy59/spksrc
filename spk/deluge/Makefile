@@ -4,14 +4,13 @@ SPK_REV = 10
 SPK_ICON = src/deluge.png
 
 BUILD_DEPENDS = cross/python cross/setuptools cross/pip cross/wheel
-DEPENDS = cross/libtorrent cross/$(SPK_NAME)
+DEPENDS = cross/$(SPK_NAME)
 WHEELS = characteristic chardet pyasn1-modules pyxdg Mako service-identity==17.0.0 setproctitle
-#WHEELS = characteristic chardet pyasn1-modules pyxdg Mako service-identity setproctitle
 SPK_DEPENDS = "python>=2.7.6-8"
 
 REQUIRED_DSM = 5.0
-# archs lacking C++11 compiler (88f6281 and ppc archs except QorIQ) required by cross/libtorrent
-UNSUPPORTED_ARCHS = 88f6281 powerpc ppc824x ppc853x ppc854x
+# archs lacking C++11 compiler (88f6281, hi3535 and ppc archs except QorIQ) required by cross/libtorrent
+UNSUPPORTED_ARCHS = 88f6281 hi3535 powerpc ppc824x ppc853x ppc854x
 
 MAINTAINER = Safihre
 DESCRIPTION = Deluge is a full-featured BitTorrent client for Linux, OS X, Unix and Windows. It uses libtorrent in its backend and features multiple user-interfaces including: GTK+, web and console. It has been designed using the client server model with a daemon process that handles all the bittorrent activity. The Deluge daemon is able to run on headless machines with the user-interfaces being able to connect remotely from any platform. This package is intended for advanced users.
