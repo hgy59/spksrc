@@ -4,9 +4,9 @@ PKG_VERS_MINOR = 7
 PKG_VERS_PATCH = 18
 PKG_VERS = $(PKG_VERS_MAJOR).$(PKG_VERS_MINOR).$(PKG_VERS_PATCH)
 PKG_EXT = tar.xz
-PKG_DIST_NAME = Python-$(PKG_VERS)rc1.$(PKG_EXT)
+PKG_DIST_NAME = Python-$(PKG_VERS).$(PKG_EXT)
 PKG_DIST_SITE = http://www.python.org/ftp/python/$(PKG_VERS)
-PKG_DIR = Python-$(PKG_VERS)rc1
+PKG_DIR = Python-$(PKG_VERS)
 
 DEPENDS  = cross/zlib cross/openssl cross/sqlite cross/readline cross/ncursesw cross/bzip2
 DEPENDS += cross/berkeleydb-5.3 native/$(PKG_NAME)

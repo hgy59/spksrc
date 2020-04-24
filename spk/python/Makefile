@@ -24,7 +24,7 @@ DESCRIPTION_SPN = Lenguaje de programación Python 2.7.
 RELOAD_UI = yes
 STARTABLE = no
 DISPLAY_NAME = Python
-CHANGELOG = "1. Update to Python 2.7.18rc1"
+CHANGELOG = "1. Update to Python 2.7.18<br/>2. Update dependencies"
 
 HOMEPAGE = http://www.python.org
 LICENSE  = PSF
