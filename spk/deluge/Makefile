@@ -5,7 +5,7 @@ SPK_ICON = src/deluge.png
 
 BUILD_DEPENDS = cross/python cross/setuptools cross/pip cross/wheel
 DEPENDS = cross/$(SPK_NAME)
-WHEELS = characteristic chardet pyasn1-modules pyxdg Mako service-identity==17.0.0 setproctitle
+WHEELS = characteristic==14.3.0 chardet==3.0.4 pyasn1-modules==0.2.8 pyxdg==0.26 Mako==1.1.2 service-identity==18.1.0 setproctitle==1.1.10
 SPK_DEPENDS = "python>=2.7.6-8"
 
 REQUIRED_DSM = 5.0

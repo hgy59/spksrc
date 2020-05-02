@@ -1,4 +1,2 @@
 lnk:lib/libboost_*.so
-lnk:lib/libboost_*.so.1
-lnk:lib/libboost_*.so.1.63
 lib:lib/libboost_*.so.1.63.0
