@@ -1,12 +1,12 @@
 SPK_NAME = deluge
 SPK_VERS = 2.0.3
-SPK_REV = 10
+SPK_REV = 11
 SPK_ICON = src/deluge.png
 
 BUILD_DEPENDS = cross/python cross/setuptools cross/pip cross/wheel
-DEPENDS = cross/$(SPK_NAME)
-WHEELS = characteristic==14.3.0 chardet==3.0.4 pyasn1-modules==0.2.8 pyxdg==0.26 Mako==1.1.2 service-identity==18.1.0 setproctitle==1.1.10
-SPK_DEPENDS = "python>=2.7.6-8"
+DEPENDS = cross/rencode cross/$(SPK_NAME)
+WHEELS = src/requirements.txt
+SPK_DEPENDS = "python>=2.7.18"
 
 REQUIRED_DSM = 5.0
 # archs lacking C++11 compiler (88f6281, hi3535 and ppc archs except QorIQ) required by cross/libtorrent
@@ -23,9 +23,10 @@ HOMEPAGE = http://deluge-torrent.org
 LICENSE  = GPL
 HELPURL  = http://dev.deluge-torrent.org/wiki/UserGuide
 
-# Custom start-stop script needed due to double-deamon
-SSS_SCRIPT       = src/dsm-control.sh
-WIZARDS_DIR      = src/wizard/
+# Custom start-stop script needed due to double-daemon
+SSS_SCRIPT= src/dsm-control.sh
+
+WIZARDS_DIR = src/wizard/
 
 SERVICE_USER = auto
 SERVICE_WIZARD_SHARE = wizard_download_dir
