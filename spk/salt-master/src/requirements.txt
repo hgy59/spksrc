@@ -1,5 +1,12 @@
-salt==2015.5.3
-Jinja2
-requests>=1.0.0
-CherryPy
-futures>=2.0
+salt==2015.5.11
+Jinja2==2.11.2
+requests==2.23.0
+CherryPy==11.2.0
+more-itertools==5.0.0
+cheroot==8.3.0
+backports.functools-lru-cache==1.6.1
+jaraco.classes==2.0
+jaraco.functools==2.0
+portend==2.6
+tempora==1.14.1
+futures==3.3.0
