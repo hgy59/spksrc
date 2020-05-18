@@ -24,7 +24,11 @@ start_daemon ()
 {
     ${SUDO} ${USER} -s /bin/sh -c "PATH=${PATH} ${PYTHON} ${NZBMEGASEARCH} daemon"
     sleep 1
-    ps w | grep [${INSTALL_DIR}]/share/NZBmegasearch/mega2.py | awk '{print $1}' > ${PID_FILE}
+    if [ "${MAJOR_VERSION}" -ge "6" ]; then
+        ps aux | grep [${INSTALL_DIR}]/share/NZBmegasearch/mega2.py | awk '{print $2}' > ${PID_FILE}
+    else
+        ps w | grep [${INSTALL_DIR}]/share/NZBmegasearch/mega2.py | awk '{print $1}' > ${PID_FILE}
+    fi
 }
 
 stop_daemon ()

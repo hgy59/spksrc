@@ -12,7 +12,7 @@ DESCRIPTION = Aggregate automatically NZB search results. Easy. Quick. Clean. NZ
 ADMIN_PORT = 8086
 RELOAD_UI = yes
 DISPLAY_NAME = NZBmegasearcH
-BETA = 1
+
 CHANGELOG = "Fix DSM 6 service start."
 
 HOMEPAGE  = http://pillone.github.io/usntssearch/
