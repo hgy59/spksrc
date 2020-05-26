@@ -6,6 +6,7 @@ DNAME="pyLoad"
 
 # Others
 INSTALL_DIR="/usr/local/${PACKAGE}"
+PATH="${INSTALL_DIR}/bin:${PATH}"
 PYTHON="${INSTALL_DIR}/env/bin/python"
 PYLOAD="${INSTALL_DIR}/share/pyload/pyLoadCore.py"
 PID_FILE="${INSTALL_DIR}/var/pyload.pid"

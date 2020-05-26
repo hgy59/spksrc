@@ -25,8 +25,6 @@ ADMIN_PORT		= $(SERVICE_PORT)
 
 POST_STRIP_TARGET = pyload_extra_install
 
-SPK_COMMANDS = "bin/js bin/tesseract"
-
 include ../../mk/spksrc.spk.mk
 
 .PHONY: pyload_extra_install
