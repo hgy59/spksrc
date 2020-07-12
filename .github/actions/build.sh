@@ -77,6 +77,11 @@ do
         else
             noarch_packages+="${package} "
         fi
+    else
+        # adjust folder for packages with different name
+        if [ "${package}" = "nzbdrone" -a -f "./spk/sonarr/Makefile" ]; then
+            arch_packages+="sonarr "
+        fi
     fi
 done
 
