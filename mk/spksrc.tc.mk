@@ -1,3 +1,57 @@
+### Toolchain rules
+# Variables:
+#  TC_ARCH          cpu architecture (use archs defined in spksrc.common.mk, use multiple for generic archs)
+#  TC_NAME          use syno-$(TC_ARCH) (for generic archs use: syno-x64, syno-aarch64, syno-armv7)
+#  TC_VERS          use respective DSM version
+#  TC_OS_MIN_VER    use major.minor of DSM version and branch version (like 6.2-25023)
+#  TC_FIRMWARE      oboslete, please use TC_OS_MIN_VER
+#  TC_DIST_NAME     toolchain file to download
+#  TC_DIST_SITE     url to download $(TC_DIST_NAME) from
+#  TC_DIST_FILE     define to rename downloaded toolchain file to avoid naming conflicts, default: $(TC_DIST_NAME)
+#  TC_BASE_DIR      toolchain folder inside the downloaded archive
+#  TC_PREFIX        toolchain prefix, default: $(TC_BASE_DIR)
+#  TC_TARGET        toolchain prefix, default: $(TC_BASE_DIR)
+#  
+#  TC_INCDIR        Include folder of header files (for c/c++ compiler), default: $(TC_BASE_DIR)/sys-root/usr/include
+#  TC_LIBDIR        Library folder relativ to $(WORK_DIR)/$(TC_BASE_DIR)/, default: (TC_BASE_DIR)/sys-root/lib
+#  TC_ADDITIONAL_CFLAGS     Additional CFLAGS
+#  TC_ADDITIONAL_CPPFLAGS   Additional CPPFLAGS, default: $(TC_ADDITIONAL_CFLAGS)
+#  TC_ADDITIONAL_CXXFLAGS   Additional CXXFLAGS, default: $(TC_ADDITIONAL_CPPFLAGS)
+
+# Validate variables and set default values
+ifeq ($(strip $(TC_BASE_DIR)),)
+$(error TC_BASE_DIR must be defined)
+endif
+
+ifeq ($(strip $(TC_PREFIX)),)
+TC_PREFIX = $(TC_BASE_DIR)
+endif
+
+ifeq ($(strip $(TC_TARGET)),)
+TC_TARGET = $(TC_BASE_DIR)
+endif
+
+ifeq ($(strip $(TC_INCDIR)),)
+TC_INCDIR = $(TC_BASE_DIR)/sys-root/usr/include
+endif
+
+ifeq ($(strip $(TC_ADDITIONAL_CPPFLAGS)),)
+TC_ADDITIONAL_CPPFLAGS = $(TC_ADDITIONAL_CFLAGS)
+endif
+
+ifeq ($(strip $(TC_ADDITIONAL_CXXFLAGS)),)
+TC_ADDITIONAL_CXXFLAGS = $(TC_ADDITIONAL_CPPFLAGS)
+endif
+
+ifeq ($(strip $(TC_LIBDIR)),)
+TC_LIBDIR = $(TC_BASE_DIR)/sys-root/lib
+endif
+
+TC_CFLAGS = -I$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_INCDIR) $(TC_ADDITIONAL_CFLAGS)
+TC_CPPFLAGS = -I$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_INCDIR) $(TC_ADDITIONAL_CPPFLAGS)
+TC_CXXFLAGS = -I$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_INCDIR) $(TC_ADDITIONAL_CXXFLAGS)
+TC_LDFLAGS = -L$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_LIBDIR)
+
 
 # Constants
 SHELL := $(SHELL) -e
@@ -43,6 +97,10 @@ include ../../mk/spksrc.tc-fix.mk
 
 
 all: fix
+	@if [ ! -d "$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_INCDIR)" ]; then \
+	  echo "include folder does not exist: $(WORK_DIR)/$(TC_BASE_DIR)/$(TC_INCDIR)" ; \
+	  exit 1; \
+	fi
 
 
 TOOLS = ld ldshared:"gcc -shared" cpp nm cc:gcc as ranlib cxx:g++ ar strip objdump readelf
@@ -86,7 +144,9 @@ tc_vars: patch
 	@echo TC_FIRMWARE := $(TC_FIRMWARE)
 	@echo TC_OS_MIN_VER := $(TC_OS_MIN_VER)
 	@echo TC_ARCH := $(TC_ARCH)
-
+	ifeq ($(wildcard $(WORK_DIR)/$(TC_BASE_DIR)/$(TC_INCDIR)/.),)
+	$(error missing folder $(WORK_DIR)/$(TC_BASE_DIR)/$(TC_INCDIR))
+	endif
 
 ### Clean rules
 clean:

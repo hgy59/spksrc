@@ -12,19 +12,7 @@ TC_DIST_SITE = https://sourceforge.net/projects/dsgpl/files/Tool%20Chain/SRM%201
 TC_DIST_FILE = ipq806x-$(TC_DIST_NAME)
 
 TC_BASE_DIR = arm-unknown-linux-gnueabi
-TC_PREFIX = arm-unknown-linux-gnueabi
-TC_TARGET = arm-unknown-linux-gnueabi
-
-TC_CFLAGS = -I$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_BASE_DIR)/sysroot/usr/include
-TC_CPPFLAGS = -I$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_BASE_DIR)/sysroot/usr/include
-TC_CXXFLAGS = -I$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_BASE_DIR)/sysroot/usr/include
-TC_LDFLAGS = -L$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_BASE_DIR)/sysroot/lib
-
-FIX_TARGET = tc_fix_armv7
+TC_INCDIR = $(TC_BASE_DIR)/sysroot/usr/include
+TC_LIBDIR = $(TC_BASE_DIR)/sysroot/lib
 
 include ../../mk/spksrc.tc.mk
-
-.PHONY: tc_fix_armv7
-tc_fix_armv7:
-	chmod -R u+w $(WORK_DIR)
-	@find $(WORK_DIR)/$(TC_BASE_DIR) -type f -name '*.la' -exec sed -i -e "s|^libdir=.*$$|libdir='$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_BASE_DIR)/sysroot/lib'|" {} \;

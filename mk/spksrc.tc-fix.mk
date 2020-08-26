@@ -5,6 +5,12 @@
 #  pre_fix_target   (override with PRE_FIX_TARGET)
 #  fix_target       (override with FIX_TARGET)
 #  post_fix_target  (override with POST_FIX_TARGET)
+# Variables:
+#  TC_LIBDIR        Library subfolder of $(WORK_DIR)/$(TC_BASE_DIR)
+
+ifeq ($(strip $(TC_LIBDIR)),)
+$(error TC_LIBDIR must be defined)
+endif
 
 FIX_COOKIE = $(WORK_DIR)/.$(COOKIE_PREFIX)fix_done
 
@@ -28,12 +34,17 @@ endif
 .PHONY: $(PRE_FIX_TARGET) $(FIX_TARGET) $(POST_FIX_TARGET)
 
 fix_msg:
-	@$(MSG) "Fixing libtool files for $(NAME)"
+	@$(MSG) "Fixing access rights and libtool files for $(NAME)"
 
 pre_fix_target: fix_msg
 
-fix_target:  $(PRE_FIX_TARGET) 
-	@find $(WORK_DIR)/$(TC_BASE_DIR) -type f -name '*.la' -exec sed -i -e "s|^libdir=.*$$|libdir='$(WORK_DIR)/$(TC_BASE_DIR)/lib'|" {} \;
+fix_target:  $(PRE_FIX_TARGET)
+	@chmod -R u+w $(WORK_DIR)
+	@if [ ! -d "$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_LIBDIR)" ]; then \
+	  echo "libdir does not exist: $(WORK_DIR)/$(TC_BASE_DIR)/$(TC_LIBDIR)" ; \
+	  exit 1; \
+	fi
+	@find $(WORK_DIR)/$(TC_BASE_DIR) -type f -name '*.la' -exec sed -i -e "s|^libdir=.*$$|libdir='$(WORK_DIR)/$(TC_BASE_DIR)/$(TC_LIBDIR)'|" {} \;
 
 post_fix_target: $(FIX_TARGET)
 
@@ -46,4 +57,3 @@ $(FIX_COOKIE): $(POST_FIX_TARGET)
 else
 fix: ;
 endif
-
