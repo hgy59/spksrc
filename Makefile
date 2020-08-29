@@ -34,7 +34,7 @@ toolchain-clean:
 kernel-clean:
 	@for kernel in $(dir $(wildcard kernel/*/Makefile)) ; \
 	do \
-	    (cd $${kernel} && $(MAKE) clean) ; \
+	    (echo "clean $${kernel}" && rm -rf $${kernel}/work) ; \
 	done
 
 cross-clean:
