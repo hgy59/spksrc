@@ -3,9 +3,9 @@
 #   scripts/installer
 #   scripts/start-stop-status
 #   scripts/service-setup
-#   conf/privilege            if SERVICE_USER
-#   conf/resource/SPK_NAME.sc if SERVICE_PORT
-#   app/config                if DSM_UI_DIR
+#   conf/privilege        if SERVICE_USER
+#   conf/SPK_NAME.sc      if SERVICE_PORT
+#   app/config            if DSM_UI_DIR
 #
 # Target are executed in the following order:
 #  service_msg_target
@@ -35,6 +35,10 @@ else
 $(PRE_SERVICE_TARGET): service_msg_target
 endif
 
+ifeq ($(strip $(DSM_UI_DIR)),)
+DSM_UI_DIR=app
+endif
+
 .PHONY: service_target service_msg_target
 .PHONY: $(PRE_SERVICE_TARGET) $(SERVICE_TARGET) $(POST_SERVICE_TARGET)
 .PHONY: $(DSM_SCRIPTS_DIR)/service-setup $(DSM_SCRIPTS_DIR)/start-stop-status
@@ -55,8 +59,10 @@ endif
 # Recommend explicit STARTABLE=no
 ifeq ($(strip $(SSS_SCRIPT)),)
 ifeq ($(strip $(SERVICE_COMMAND)),)
+ifeq ($(strip $(SERVICE_EXE)),)
 ifeq ($(strip $(STARTABLE)),)
 $(error Set STARTABLE=no or provide either SERVICE_COMMAND or specific SSS_SCRIPT)
+endif
 endif
 endif
 endif
@@ -74,7 +80,7 @@ ifneq ($(strip $(SPK_USER)),)
 	@echo USER=\"$(SPK_USER)\" >> $@
 	@echo "PRIV_PREFIX=sc-" >> $@
 	@echo "SYNOUSER_PREFIX=svc-" >> $@
-	@echo 'if [ $${SYNOPKG_DSM_VERSION_MAJOR} -lt 6 ]; then EFF_USER="$${SYNOUSER_PREFIX}$${USER}"; else EFF_USER="$${PRIV_PREFIX}$${USER}"; fi' >> $@
+	@echo 'if [ -n "$${SYNOPKG_DSM_VERSION_MAJOR}" -a "$${SYNOPKG_DSM_VERSION_MAJOR}" -lt 6 ]; then EFF_USER="$${SYNOUSER_PREFIX}$${USER}"; else EFF_USER="$${PRIV_PREFIX}$${USER}"; fi' >> $@
 endif
 ifneq ($(strip $(SERVICE_WIZARD_GROUP)),)
 	@echo "# Group name from UI if provided" >> $@
@@ -102,9 +108,22 @@ endif
 	@echo "# Service command to execute (either with shell or as is)" >> $@
 	@echo 'SERVICE_COMMAND="$(SERVICE_COMMAND)"' >> $@
 endif
+ifneq ($(strip $(SERVICE_EXE)),)
+	@echo "# Service command to execute with start-stop-daemon" >> $@
+	@echo 'SERVICE_EXE="$(SERVICE_EXE)"' >> $@
+ifneq ($(strip $(SERVICE_OPTIONS)),)
+	@echo 'SERVICE_OPTIONS="$(SERVICE_OPTIONS)"' >> $@
+endif
+endif
 	@cat $(SPKSRC_MK)spksrc.service.call_func >> $@
 ifneq ($(strip $(SERVICE_SETUP)),)
 	@cat $(CURDIR)/$(SERVICE_SETUP) >> $@
+endif
+ifneq ($(strip $(SPK_COMMANDS) $(SPK_LINKS)),)
+	@echo "# List of commands to create links for" >> $@
+	@echo "SPK_COMMANDS=\"${SPK_COMMANDS}\"" >> $@
+	@echo "SPK_LINKS=\"${SPK_LINKS}\"" >> $@
+	@cat $(SPKSRC_MK)spksrc.service.create_links >> $@
 endif
 DSM_SCRIPTS_ += service-setup
 SERVICE_FILES += $(DSM_SCRIPTS_DIR)/service-setup
@@ -124,19 +143,29 @@ ifeq ($(STARTABLE),no)
 $(DSM_SCRIPTS_DIR)/start-stop-status: $(SPKSRC_MK)spksrc.service.non-startable
 	@$(dsm_script_copy)
 else
+ifneq ($(strip $(SERVICE_EXE)),)
+$(DSM_SCRIPTS_DIR)/start-stop-status: $(SPKSRC_MK)spksrc.service.start-stop-daemon
+	@$(dsm_script_copy)
+else
 $(DSM_SCRIPTS_DIR)/start-stop-status: $(SPKSRC_MK)spksrc.service.start-stop-status
 	@$(dsm_script_copy)
+endif
 endif
 endif
 
 
 # Generate privilege file for service user (prefixed to avoid collision with busybox account)
 ifneq ($(strip $(SPK_USER)),)
+ifeq ($(strip $(SERVICE_EXE)),)
 $(DSM_CONF_DIR)/privilege: $(SPKSRC_MK)spksrc.service.privilege
+else
+$(DSM_CONF_DIR)/privilege: $(SPKSRC_MK)spksrc.service.privilege-startasroot
+endif
 	$(create_target_dir)
 	@sed 's|USER|sc-$(SPK_USER)|' $< > $@
-	$(eval SPK_CONTENT += conf)
-
+ifneq ($(findstring conf,$(SPK_CONTENT)),conf)
+SPK_CONTENT += conf
+endif
 SERVICE_FILES += $(DSM_CONF_DIR)/privilege
 endif
 
@@ -159,13 +188,17 @@ else
 endif
 	@echo "port_forward=\"yes\"" >> $@
 	@echo "dst.ports=\"${SERVICE_PORT}/tcp\"" >> $@
-	$(eval SPK_CONTENT += conf)
+ifneq ($(findstring conf,$(SPK_CONTENT)),conf)
+SPK_CONTENT += conf
+endif
 SERVICE_FILES += $(DSM_CONF_DIR)/$(SPK_NAME).sc
 endif
 else
 $(DSM_CONF_DIR)/$(SPK_NAME).sc: $(filter %.sc,$(FWPORTS))
 	@$(dsm_script_copy)
-	$(eval SPK_CONTENT += conf)
+ifneq ($(findstring conf,$(SPK_CONTENT)),conf)
+SPK_CONTENT += conf
+endif
 SERVICE_FILES += $(DSM_CONF_DIR)/$(SPK_NAME).sc
 endif
 
@@ -183,17 +216,15 @@ endif
 ifeq ($(strip $(SERVICE_PORT_ALL_USERS)),)
 SERVICE_PORT_ALL_USERS=true
 endif
-ifeq ($(strip $(DSM_UI_DIR)),)
-DSM_UI_DIR=app
-endif
 
 $(STAGING_DIR)/$(DSM_UI_DIR)/config:
 	$(create_target_dir)
 	@echo '{ ".url": { ' > $@
 	@echo "  \"com.synocommunity.packages.${SPK_NAME}\": {" >> $@
 	@echo "    \"title\": \"${DISPLAY_NAME}\"," >> $@
-	@echo "    \"desc\": \"${DESCRIPTION}\"," >> $@
-	@echo "    \"icon\": \"images/${SPK_NAME}-{0}.png\"," >> $@
+	@/bin/echo -n "    \"desc\": \"" >> $@
+	@/bin/echo -n "${DESCRIPTION}" | sed -e 's/\\//g' -e 's/"/\\"/g' >> $@
+	@echo "\",\n    \"icon\": \"images/${SPK_NAME}-{0}.png\"," >> $@
 	@echo "    \"type\": \"url\"," >> $@
 	@echo "    \"protocol\": \"${SERVICE_PORT_PROTOCOL}\"," >> $@
 	@echo "    \"port\": \"${SERVICE_PORT}\"," >> $@
@@ -202,6 +233,7 @@ $(STAGING_DIR)/$(DSM_UI_DIR)/config:
 	@echo "    \"grantPrivilege\": \"all\"," >> $@
 	@echo "    \"advanceGrantPrivilege\": true" >> $@
 	@echo '} } }' >> $@
+	cat $@ | python -m json.tool > /dev/null
 
 SERVICE_FILES += $(STAGING_DIR)/$(DSM_UI_DIR)/config
 endif
