@@ -2,7 +2,7 @@ PKG_NAME = c-ares
 PKG_VERS = 1.18.1
 PKG_EXT = tar.gz
 PKG_DIST_NAME = $(PKG_NAME)-$(PKG_VERS).$(PKG_EXT)
-PKG_DIST_SITE = https://c-ares.org/download
+PKG_DIST_SITE = https://github.com/c-ares/c-ares/releases/download/cares-$(subst .,_,$(PKG_VERS))
 PKG_DIR = $(PKG_NAME)-$(PKG_VERS)
 
 DEPENDS =
