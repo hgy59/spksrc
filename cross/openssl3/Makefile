@@ -7,9 +7,6 @@ PKG_DIR = openssl-$(PKG_VERS)
 
 DEPENDS = cross/zlib
 
-# atomic operations are not supported on ARMv5 and PPC archs except qoriq.
-UNSUPPORTED_ARCHS = $(OLD_PPC_ARCHS) $(ARMv5_ARCHS)
-
 HOMEPAGE = https://www.openssl.org
 COMMENT  = TLS/SSL and crypto library.
 LICENSE  = Apache-2.0
