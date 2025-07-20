@@ -11,7 +11,7 @@ DESCRIPTION_FRE = Transmission est un client BitTorrent simple et rapide. Vous p
 DESCRIPTION_SPN = Transmission es un cliente BitTorrent simple y rápido. Puedes controlarlo remotamente mediante su interfaz web o alguna aplicación dedicada.
 STARTABLE = yes
 DISPLAY_NAME = Transmission
-CHANGELOG = "1. Update openssl to v3.0.7.<br/><br/>Package recreated for DSM < 7."
+CHANGELOG = "1. Update openssl to v1.1.1n.<br/><br/>Package recreated for DSM < 7."
 
 HOMEPAGE = https://transmissionbt.com
 LICENSE  = GPLv2/GPLv3
