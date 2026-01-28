@@ -7,7 +7,7 @@ DSM_UI_DIR = app
 MAINTAINER = SynoCommunity
 DESCRIPTION = ruTorrent is a front-end for the popular Bittorrent client rTorrent. rTorrent is a BitTorrent client for ncurses, using the libtorrent library. The client and library is written in C++ with emphasis on speed and efficiency, while delivering equivalent features to those found in GUI based clients in an ncurses client.
 DISPLAY_NAME = ruTorrent
-CHANGELOG = "1. Update rtorrent/libtorrent to v0.16.6. <br/>2. Add file handle and peer limits to prevent 'Too many open files' errors."
+CHANGELOG = "1. Update rtorrent/libtorrent to v0.16.5. <br/>2. Add file handle and peer limits to prevent 'Too many open files' errors."
 
 # libtorrent-rakshasa requires C++14 support
 REQUIRED_MIN_DSM = 7.0
