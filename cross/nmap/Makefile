@@ -1,11 +1,14 @@
 PKG_NAME = nmap
-PKG_VERS = 7.97
+PKG_VERS = 7.98
 PKG_EXT = tar.bz2
 PKG_DIST_NAME = $(PKG_NAME)-$(PKG_VERS).$(PKG_EXT)
 PKG_DIST_SITE = https://nmap.org/dist
 PKG_DIR = $(PKG_NAME)-$(PKG_VERS)
 
-DEPENDS = cross/libpcap cross/openssl3
+DEPENDS  = cross/libpcap
+DEPENDS += cross/openssl3
+DEPENDS += cross/libssh2
+DEPENDS += cross/pcre2
 
 # latest version for OLD_PPC_ARCHS is 7.92
 UNSUPPORTED_ARCHS = $(OLD_PPC_ARCHS)
@@ -18,7 +21,6 @@ GNU_CONFIGURE = 1
 CONFIGURE_ARGS  = --without-zenmap
 CONFIGURE_ARGS += --without-ndiff
 CONFIGURE_ARGS += --with-liblua=included
-CONFIGURE_ARGS += --with-libpcre=included
 ifneq ($(wildcard $(OPENSSL_STAGING_PREFIX)),)
 CONFIGURE_ARGS += --with-openssl=$(OPENSSL_STAGING_PREFIX)
 endif

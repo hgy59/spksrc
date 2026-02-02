@@ -36,7 +36,8 @@ PATCHES += $(sort $(foreach group,ARM_ARCHS ARMv5_ARCHS ARMv7_ARCHS ARMv7L_ARCHS
 	   $(wildcard patches/$(shell echo $(group) | cut -f1 -d '_' | tr 'A-Z' 'a-z')/*.patch \
 	              patches/$(shell echo $(group) | cut -f1 -d '_' | tr 'A-Z' 'a-z')-$(TCVERSION)/*.patch))))
 endif
-PATCHES := $(realpath $(PATCHES))
+#PATCHES := $(realpath $(PATCHES))
+PATCHES := $(sort $(realpath $(PATCHES)))
 
 PATCH_COOKIE = $(WORK_DIR)/.$(COOKIE_PREFIX)patch_done
 
@@ -61,6 +62,7 @@ endif
 
 patch_msg:
 	@$(MSG) "Patching for $(NAME)"
+	@$(MSG) "PATCHES = $(PATCHES)"
 
 pre_patch_target: patch_msg
 
