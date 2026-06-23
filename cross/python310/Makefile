@@ -1,12 +1,12 @@
 PKG_NAME = python310
-PKG_VERS = 3.10.15
+PKG_VERS = 3.10.20
 PKG_VERS_MAJOR_MINOR = $(word 1,$(subst ., ,$(PKG_VERS))).$(word 2,$(subst ., ,$(PKG_VERS)))
 PKG_EXT = tar.xz
 PKG_DIST_NAME = Python-$(PKG_VERS).$(PKG_EXT)
 PKG_DIST_SITE = https://www.python.org/ftp/python/$(PKG_VERS)
 PKG_DIR = Python-$(PKG_VERS)
 
-BUILD_DEPENDS = native/$(PKG_NAME)
+BUILD_DEPENDS = native/python310
 
 DEPENDS  = cross/zlib cross/sqlite cross/readline cross/ncursesw cross/bzip2 cross/xz
 # required for Sleepycat^WOracle Berkeley DB interface
@@ -26,25 +26,24 @@ CONFIGURE_ARGS += --enable-ipv6
 # installed pip is not on PATH
 CONFIGURE_ARGS += --without-ensurepip
 CONFIGURE_ARGS += --enable-loadable-sqlite-extensions
-CONFIGURE_ARGS += --with-computed-gotos=yes
 CONFIGURE_ARGS += --with-build-python
+CONFIGURE_ARGS += --with-computed-gotos=yes
+CONFIGURE_ARGS += --disable-test-modules
 
-include ../../mk/spksrc.archs.mk
+include ../../mk/spksrc.common.mk
 
 # optionally generate optimized code
 ifeq ($(strip $(PYTHON_OPTIMIZE)),1)
-CONFIGURE_ARGS += --enable-optimizations
-# old compilers fail with unrecognized command line options: -flto -fuse-linker-plugin -ffat-lto-objects -flto-partition=none
-ifneq ($(findstring $(ARCH),$(OLD_PPC_ARCHS)),$(ARCH))
-# Some tests (like test_base64) must find libpython shared library at runtime.
-# python: error while loading shared libraries: libpython3.10.so.1.0: cannot open shared object file: No such file or directory
-ENV += LD_LIBRARY_PATH=$(WORK_DIR)/$(PKG_DIR)
+#
 # Enable Link-Time Optimization
+ifneq ($(findstring $(ARCH),$(OLD_PPC_ARCHS)),$(ARCH))
 CONFIGURE_ARGS += --with-lto
 endif
-else
-# test modules are required for optimization only
-CONFIGURE_ARGS += --disable-test-modules
+#
+# pgo optimization can only be run native platform and now
+# exit on errors which had no impact (and effects) previously.
+#    https://github.com/python/cpython/pull/111950
+#CONFIGURE_ARGS += --enable-optimizations
 endif
 
 # older gcc does not know -Wno-unused-result
