@@ -1,0 +1,70 @@
+[
+   {
+      "step_title": "RustFS configuration",
+      "items": [
+         {
+            "type": "textfield",
+            "desc": "Data shared folder. This must be a name for the shared folder only, without any path. This share is created at installation when it does not already exist.",
+            "subitems": [
+               {
+                  "key": "wizard_data_directory",
+                  "desc": "Data shared folder",
+                  "defaultValue": "rustfs",
+                  "validator": {
+                     "allowBlank": false,
+                     "regex": {
+                        "expr": "/^[^<>: */?\"]*/",
+                        "errorText": "Share name must be a folder name only. Path separators, spaces and other special chars are not allowed."
+                     }
+                  }
+               }
+            ]
+         },
+         {
+            "desc": "If you let the installer create the shared folder, it is created under the same volume as the package is installed. If you want to use a different volume for the share, you must create the shared folder in DSM Control Panel before, and enter the name of the existing share in the field above."
+         },
+         {
+            "desc": "Please define the following credentials to access the RustFS service and console:"
+         },
+         {
+            "type": "textfield",
+            "subitems": [
+               {
+                  "key": "wizard_access_key",
+                  "desc": "RustFS access key",
+                  "defaultValue": "",
+                  "validator": {
+                     "allowBlank": false,
+                     "minLength": 3,
+                     "regex": {
+                        "expr": "/^[A-Z0-9]*$/",
+                        "errorText": "Only uppercase letters and digits allowed in access key"
+                     }
+                  }
+               }
+            ]
+         },
+         {
+            "type": "password",
+            "subitems": [
+               {
+                  "key": "wizard_secret_key",
+                  "desc": "RustFS secret key",
+                  "defaultValue": "",
+                  "validator": {
+                     "allowBlank": false,
+                     "minLength": 16,
+                     "regex": {
+                        "expr": "/^[^\"|\/]*$/",
+                        "errorText": "Not allowed character in secret key"
+                     }
+                  }
+               }
+            ]
+         },
+         {
+            "desc": "For <b>additional configuration</b> define environment variables in <code>/var/packages/rustfs/var/environment-variables</code>."
+         }
+     ]
+   }
+]
