@@ -468,7 +468,7 @@ jobs:
           # Capture initial disk space before cleanup
           {
             echo "=========================================="
-            echo "DISK SPACE BEFORE MAXIMIZE-BUILD-SPACE"
+            echo "DISK SPACE BEFORE BUILD"
             echo "=========================================="
 
             echo ""
@@ -479,47 +479,6 @@ jobs:
             echo "=== SWAP (swapon --show) ==="
             swapon --show
           } > disk_usage_cleanup.txt
-
-          # Display to console
-          cat disk_usage_cleanup.txt
-
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 49152
-          temp-reserve-mb: 10240
-          swap-size-mb: 4096
-          remove-android: true
-          remove-codeql: true
-          remove-docker-images: false
-          remove-dotnet: true
-          remove-haskell: true
-
-      - name: Disk Space AFTER maximize-build-space
-        run: |
-          # Capture disk space after cleanup
-          {
-            echo ""
-            echo "=========================================="
-            echo "DISK SPACE AFTER MAXIMIZE-BUILD-SPACE"
-            echo "=========================================="
-
-            echo ""
-            echo "=== BLOCK DEVICES (lsblk) ==="
-            lsblk
-
-            echo ""
-            echo "=== FILESYSTEM USAGE (df -h) ==="
-            df -h
-
-            echo ""
-            echo "=== SWAP (swapon --show) ==="
-            swapon --show
-
-            echo ""
-            echo "=== Space freed calculation ==="
-            df -h /home/runner/work/spksrc/spksrc | tail -1 | awk '{print "Available space: " $4}'
-          } >> disk_usage_cleanup.txt
 
           # Display to console
           cat disk_usage_cleanup.txt
