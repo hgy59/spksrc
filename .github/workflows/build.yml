@@ -132,7 +132,7 @@ jobs:
   # A push carries no PR context, hence the API lookup here (fail-open on error).
   gate:
     name: Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
     steps:
@@ -186,7 +186,7 @@ jobs:
 
   prepare:
     name: Prepare for Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: gate
     if: needs.gate.outputs.should_build == 'true'
     outputs:
@@ -297,7 +297,7 @@ jobs:
 
   set-defaults:
     name: Set Defaults
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: prepare
     outputs:
       matrix: ${{ steps.defaults.outputs.matrix }}
@@ -456,12 +456,74 @@ jobs:
   build:
     name: Build
     needs: [prepare, set-defaults]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: needs.set-defaults.outputs.has_entries == 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.set-defaults.outputs.matrix) }}
     steps:
+      # Free up disk space on GitHub runner before build starts
+      - name: Disk Space BEFORE maximize-build-space
+        run: |
+          # Capture initial disk space before cleanup
+          {
+            echo "=========================================="
+            echo "DISK SPACE BEFORE MAXIMIZE-BUILD-SPACE"
+            echo "=========================================="
+
+            echo ""
+            echo "=== FILESYSTEM USAGE (df -h) ==="
+            df -h
+
+            echo ""
+            echo "=== SWAP (swapon --show) ==="
+            swapon --show
+          } > disk_usage_cleanup.txt
+
+          # Display to console
+          cat disk_usage_cleanup.txt
+
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 49152
+          temp-reserve-mb: 10240
+          swap-size-mb: 4096
+          remove-android: true
+          remove-codeql: true
+          remove-docker-images: false
+          remove-dotnet: true
+          remove-haskell: true
+
+      - name: Disk Space AFTER maximize-build-space
+        run: |
+          # Capture disk space after cleanup
+          {
+            echo ""
+            echo "=========================================="
+            echo "DISK SPACE AFTER MAXIMIZE-BUILD-SPACE"
+            echo "=========================================="
+
+            echo ""
+            echo "=== BLOCK DEVICES (lsblk) ==="
+            lsblk
+
+            echo ""
+            echo "=== FILESYSTEM USAGE (df -h) ==="
+            df -h
+
+            echo ""
+            echo "=== SWAP (swapon --show) ==="
+            swapon --show
+
+            echo ""
+            echo "=== Space freed calculation ==="
+            df -h /home/runner/work/spksrc/spksrc | tail -1 | awk '{print "Available space: " $4}'
+          } >> disk_usage_cleanup.txt
+
+          # Display to console
+          cat disk_usage_cleanup.txt
+
       - name: Checkout repository
         uses: actions/checkout@v7
 
@@ -472,6 +534,12 @@ jobs:
         with:
           path: toolchain/*/work
           key: toolchain-${{ matrix.arch }}-v4-${{ hashFiles(format('toolchain/syno-{0}/digests',matrix.arch)) }}
+
+      # Check disk space after toolchain cache restore
+      - name: Disk Space After Cache Restore
+        run: |
+          echo "=== Disk Space after Cache ==="
+          df -h
 
       - name: Restore distrib cache
         uses: actions/cache/restore@v6
@@ -521,6 +589,101 @@ jobs:
           BUILD_BUDGET_SECONDS: ${{ env.BUILD_BUDGET_SECONDS }}
           BUILD_REMAINING_FILE: /github/workspace/build_remaining.txt
           BUILD_TIMEOUT_FILE: /github/workspace/build_timeout.txt
+
+      # Check disk space after build completes (success or failure)
+      - name: Disk Space After Build
+        if: always()
+        run: |
+          echo ""
+          echo "=== Disk Space after Build ==="
+          df -h
+
+          echo ""
+          echo "=== Largest directories after build ==="
+          du -h -d 2 /home/runner/work/spksrc/spksrc 2>/dev/null | sort -hr | head -20 || true
+          
+          # Create detailed disk usage report
+          {
+            echo ""
+            echo "=========================================="
+            echo "WORKSPACE DIRECTORIES"
+            echo "=========================================="
+            du -sh /home/runner/work/* 2>/dev/null || true
+            
+            echo ""
+            echo "=========================================="
+            echo "BUILD PACKAGES (with logs)"
+            echo "=========================================="
+            if [ -n "${{ needs.prepare.outputs.arch_packages }}" ] || [ -n "${{ needs.prepare.outputs.noarch_packages }}" ]; then
+              for pkg in ${{ needs.prepare.outputs.arch_packages }} ${{ needs.prepare.outputs.noarch_packages }}; do
+                if [ -d "spk/$pkg" ]; then
+                  echo "Package: $pkg"
+                  
+                  # Show total package directory size
+                  du -sh "spk/$pkg" 2>/dev/null || true
+                  
+                  # Show work directories if they exist
+                  work_dirs=$(find "spk/$pkg" -maxdepth 2 -type d -name "work-*" 2>/dev/null)
+                  if [ -n "$work_dirs" ]; then
+                    echo "$work_dirs" | while read work_dir; do
+                      du -sh "$work_dir" 2>/dev/null | sed 's/^/  /' || true
+                    done
+                  else
+                    echo "  n/a	spk/$pkg/work-${{ matrix.arch }}"
+                  fi
+                  
+                  # Show SPK file size if it exists
+                  if ls packages/${pkg}*.spk 2>/dev/null; then
+                    ls -lh packages/${pkg}*.spk 2>/dev/null | awk '{print "  " $5 "\tpackages/" $9}' || echo "  n/a	packages/${pkg}*.spk"
+                  else
+                    echo "  n/a	packages/${pkg}*.spk"
+                  fi
+                  
+                  echo ""
+                fi
+              done
+            else
+              echo "No package list available - scanning for build directories..."
+              find spk/ -type f -name "*.log" -o -name "work-*" 2>/dev/null | \
+                xargs -I {} dirname {} | sort -u | \
+                while read dir; do
+                  du -sh "$dir" 2>/dev/null || true
+                done
+            fi
+            
+            echo ""
+            echo "=========================================="
+            echo "OVERALL DISK STATUS"
+            echo "=========================================="
+            df -h
+            
+          } > disk_usage_build.txt
+          
+          # Also display to console
+          cat disk_usage_build.txt
+          
+          # Check if running low on disk space
+          DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | sed 's/%//')
+          if [ "$DISK_USAGE" -gt 90 ]; then
+            echo "::warning::Disk usage is at ${DISK_USAGE}% - build may have failed due to low disk space"
+          fi
+          
+          # Emergency cleanup if disk is critically full (above 95%)
+          if [ "$DISK_USAGE" -gt 95 ]; then
+            echo "::error::CRITICAL: Disk usage is at ${DISK_USAGE}% - performing emergency cleanup"
+            echo "disk_critical=true" >> $GITHUB_ENV
+            
+            # Clean up Docker to free space for diagnostics upload
+            echo "Cleaning Docker system..."
+            docker system prune -af --volumes 2>/dev/null || true
+            
+            # Remove large work directories except logs
+            echo "Cleaning large build artifacts..."
+            find . -type d -name "work-*" -exec sh -c 'find "$1" -type f ! -name "*.log" -delete' _ {} \; 2>/dev/null || true
+            
+            echo "Space after emergency cleanup:"
+            df -h
+          fi
 
       # Capture Docker logs when build fails
       - name: Capture Docker Logs on Failure
@@ -764,7 +927,7 @@ jobs:
   consolidate-diagnostics:
     name: Consolidate Diagnostics
     needs: [gate, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: always() && needs.gate.outputs.should_build == 'true'
     steps:
       - name: Download all diagnostic artifacts
