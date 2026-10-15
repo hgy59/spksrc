@@ -101,7 +101,7 @@ on:
 jobs:
   prepare:
     name: Prepare for Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       arch_packages: ${{ steps.dependencies.outputs.arch_packages }}
       noarch_packages: ${{ steps.dependencies.outputs.noarch_packages }}
@@ -208,7 +208,7 @@ jobs:
 
   set-defaults:
     name: Set Defaults
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: prepare
     outputs:
       matrix: ${{ steps.defaults.outputs.matrix }}
@@ -367,7 +367,7 @@ jobs:
   build:
     name: Build
     needs: [prepare, set-defaults]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: ${{ needs.set-defaults.outputs.has_entries == 'true' }}
     strategy:
       fail-fast: false
@@ -756,7 +756,7 @@ jobs:
   consolidate-diagnostics:
     name: Consolidate Diagnostics
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: always()
     steps:
       - name: Download all diagnostic artifacts
