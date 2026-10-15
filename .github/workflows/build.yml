@@ -98,10 +98,97 @@ on:
       - 'python/**'
       - 'native/**'
 
+env:
+  # Per-arch build-time budget (seconds): 20700 = 5h45m, below GitHub's 6h job
+  # kill. build.sh hard-stops the in-progress build at this ceiling so completed
+  # .spk/diagnostics still upload and the remaining packages are reported.
+  BUILD_BUDGET_SECONDS: "20700"
+
+# Cancel a previous, now-superseded run only while a pull request is still a
+# Draft, so iterative pushes during development don't pile up. Every other run
+# (non-draft PR, master/push, manual workflow_dispatch) gets a unique per-run
+# group: a shared concurrency group always constrains — at most one running
+# plus one pending run, with older pending runs evicted — even when
+# cancel-in-progress is false, which would serialize non-draft PR builds,
+# silently drop queued master builds and forbid parallel manual builds.
+concurrency:
+  group: >-
+    ${{ github.event_name == 'pull_request' && github.event.pull_request.draft
+        && format('build-{0}-{1}', github.workflow, github.ref)
+        || format('build-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == true }}
+
 jobs:
+  # Decide whether the build should run at all.
+  #  - pull_request and workflow_dispatch always build (the pull_request run is the
+  #    authoritative CI: the whole branch, origin/master...HEAD).
+  #  - push to master always builds (a merge, or a release push).
+  #  - push to a non-master branch is only the latest commit (git diff-tree); if the
+  #    branch already has an open PR, the pull_request build covers the whole branch,
+  #    so this narrow push build is redundant:
+  #      * upstream-hosted branch -> skip it (it only duplicates the PR build);
+  #      * fork branch -> skip only while the PR is a draft (its push build is
+  #        complementary and kept for non-draft, per #7238), to silence dev noise.
+  # A push carries no PR context, hence the API lookup here (fail-open on error).
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # pull_request and workflow_dispatch: always build.
+          if [ "${{ github.event_name }}" = "pull_request" ] || \
+             [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "PR or manual run -> build."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # push event from here on. A push to master (merge / release) always builds.
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            echo "Push to master -> build."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Push to a non-master branch. Look up an open PR for it upstream (a push
+          # carries no PR context); fail-open to building on any lookup error.
+          prs=$(gh api \
+            "/repos/SynoCommunity/spksrc/pulls?head=${{ github.repository_owner }}:${{ github.ref_name }}&state=open" \
+            2>/dev/null || echo '[]')
+          if [ "${{ github.repository }}" = "SynoCommunity/spksrc" ]; then
+            # Upstream-hosted branch: the pull_request build already runs the whole
+            # branch, so skip this redundant push build whenever an open PR covers it.
+            # (Draft supersede-cancellation is handled on the pull_request side by the
+            # concurrency group.)
+            count=$(echo "$prs" | jq 'if type == "array" then length else 0 end' 2>/dev/null || echo 0)
+            if [ "${count:-0}" -gt 0 ]; then
+              echo "Upstream push for a branch with an open PR -> skip (pull_request build covers it)."
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Upstream push, no open PR -> build."
+              echo "should_build=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            # Fork push: the fork build is complementary (latest commit only); skip it
+            # only while its PR is a draft, to silence noise during development.
+            draft=$(echo "$prs" | jq -r '[.[].draft] | first // false' 2>/dev/null || echo false)
+            if [ "$draft" = "true" ]; then
+              echo "Fork push for a draft PR (${{ github.ref_name }}) -> skip build."
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Fork push, PR not draft (or none) -> build."
+              echo "should_build=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
   prepare:
     name: Prepare for Build
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
+    needs: gate
+    if: needs.gate.outputs.should_build == 'true'
     outputs:
       arch_packages: ${{ steps.dependencies.outputs.arch_packages }}
       noarch_packages: ${{ steps.dependencies.outputs.noarch_packages }}
@@ -115,10 +202,11 @@ jobs:
       has_noarch_min_dsm72_packages: ${{ steps.dependencies.outputs.has_noarch_min_dsm72_packages }}
       has_arch_min_dsm73_packages: ${{ steps.dependencies.outputs.has_arch_min_dsm73_packages }}
       has_noarch_min_dsm73_packages: ${{ steps.dependencies.outputs.has_noarch_min_dsm73_packages }}
+      videodriver: ${{ steps.dependencies.outputs.videodriver }}
       distrib_hash: ${{ steps.distrib-hash.outputs.hash }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -129,8 +217,8 @@ jobs:
         run: |
           git diff --no-commit-id --name-only -r origin/master...${{github.event.pull_request.head.sha}} | grep -oP "^spk/\K[^\/]*" | sort -u | xargs
           echo "spk_packages=$(git diff --no-commit-id --name-only -r origin/master...${{github.event.pull_request.head.sha}} | grep -oP "^spk/\K[^\/]*" | sort -u | xargs)" >> $GITHUB_OUTPUT
-          git diff --no-commit-id --name-only -r origin/master...${{github.event.pull_request.head.sha}} | grep -oP "(cross|python|native)/[^\/]*" | sort -u | xargs
-          echo "dependency_folders=$(git diff --no-commit-id --name-only -r origin/master...${{github.event.pull_request.head.sha}} | grep -oP "(cross|python|native)/[^\/]*" | sort -u | xargs)" >> $GITHUB_OUTPUT
+          git diff --no-commit-id --name-only -r origin/master...${{github.event.pull_request.head.sha}} | grep -oP "^(cross|python|native)/[^\/]*" | sort -u | xargs
+          echo "dependency_folders=$(git diff --no-commit-id --name-only -r origin/master...${{github.event.pull_request.head.sha}} | grep -oP "^(cross|python|native)/[^\/]*" | sort -u | xargs)" >> $GITHUB_OUTPUT
 
       - name: Get changed spk_packages and dependency_folders of last commit for push
         if: github.event_name == 'push'
@@ -138,22 +226,23 @@ jobs:
         run: |
           git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | grep -oP "^spk/\K[^\/]*" | sort -u | xargs
           echo "spk_packages=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | grep -oP "^spk/\K[^\/]*" | sort -u | xargs)" >> $GITHUB_OUTPUT
-          git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | grep -oP "(cross|python|native)/[^\/]*" | sort -u | xargs
-          echo "dependency_folders=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | grep -oP "(cross|python|native)/[^\/]*" | sort -u | xargs)" >> $GITHUB_OUTPUT
+          git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | grep -oP "^(cross|python|native)/[^\/]*" | sort -u | xargs
+          echo "dependency_folders=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | grep -oP "^(cross|python|native)/[^\/]*" | sort -u | xargs)" >> $GITHUB_OUTPUT
 
       - name: Evaluate dependencies
         id: dependencies
         run: ./.github/actions/prepare.sh
         env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           GH_SPK_PACKAGES: ${{ steps.getchanges_push.outputs.spk_packages }} ${{ steps.getchanges_pr.outputs.spk_packages }}
           GH_DEPENDENCY_FOLDERS: ${{ steps.getchanges_push.outputs.dependency_folders }} ${{ steps.getchanges_pr.outputs.dependency_folders }}
           USER_SPK_TO_BUILD: ${{ github.event.inputs.package }}
 
       - name: Restore distrib cache
         id: cache-restore
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
-          path: ${{ github.workspace }}/distrib
+          path: distrib
           # Use a placeholder key that will never match for the exact key,
           # forcing GitHub to use restore-keys to find the best available cache
           key: distrib-placeholder-${{ github.run_id }}
@@ -201,14 +290,14 @@ jobs:
 
       - name: Save distrib cache
         if: steps.cache-check.outputs.save_cache == 'true'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
-          path: ${{ github.workspace }}/distrib
+          path: distrib
           key: distrib-${{ steps.distrib-hash.outputs.hash }}
 
   set-defaults:
     name: Set Defaults
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     needs: prepare
     outputs:
       matrix: ${{ steps.defaults.outputs.matrix }}
@@ -367,95 +456,27 @@ jobs:
   build:
     name: Build
     needs: [prepare, set-defaults]
-    runs-on: ubuntu-26.04
-    if: ${{ needs.set-defaults.outputs.has_entries == 'true' }}
+    runs-on: ubuntu-latest
+    if: needs.set-defaults.outputs.has_entries == 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.set-defaults.outputs.matrix) }}
     steps:
-      # Free up disk space on GitHub runner before build starts
-      - name: Disk Space BEFORE maximize-build-space
-        run: |
-          # Capture initial disk space before cleanup
-          {
-            echo "=========================================="
-            echo "DISK SPACE BEFORE MAXIMIZE-BUILD-SPACE"
-            echo "=========================================="
-
-            echo ""
-            echo "=== FILESYSTEM USAGE (df -h) ==="
-            df -h
-
-            echo ""
-            echo "=== SWAP (swapon --show) ==="
-            swapon --show
-          } > disk_usage_cleanup.txt
-
-          # Display to console
-          cat disk_usage_cleanup.txt
-
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 49152
-          temp-reserve-mb: 10240
-          swap-size-mb: 4096
-          remove-android: true
-          remove-codeql: true
-          remove-docker-images: false
-          remove-dotnet: true
-          remove-haskell: true
-
-      - name: Disk Space AFTER maximize-build-space
-        run: |
-          # Capture disk space after cleanup
-          {
-            echo ""
-            echo "=========================================="
-            echo "DISK SPACE AFTER MAXIMIZE-BUILD-SPACE"
-            echo "=========================================="
-
-            echo ""
-            echo "=== BLOCK DEVICES (lsblk) ==="
-            lsblk
-
-            echo ""
-            echo "=== FILESYSTEM USAGE (df -h) ==="
-            df -h
-
-            echo ""
-            echo "=== SWAP (swapon --show) ==="
-            swapon --show
-
-            echo ""
-            echo "=== Space freed calculation ==="
-            df -h /home/runner/work/spksrc/spksrc | tail -1 | awk '{print "Available space: " $4}'
-          } >> disk_usage_cleanup.txt
-
-          # Display to console
-          cat disk_usage_cleanup.txt
-
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Cache toolchains
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         # Do not cache qoriq toolchain. It must be built every time to install custom rust toolchain
         if: ${{ contains(matrix.arch,'qoriq') == false }}
         with:
-          path: ${{ github.workspace }}/toolchain/*/work
-          key: toolchain-${{ matrix.arch }}-v3-${{ hashFiles(format('toolchain/syno-{0}/digests',matrix.arch)) }}
-
-      # Check disk space after toolchain cache restore
-      - name: Disk Space After Cache Restore
-        run: |
-          echo "=== Disk Space after Cache ==="
-          df -h
+          path: toolchain/*/work
+          key: toolchain-${{ matrix.arch }}-v4-${{ hashFiles(format('toolchain/syno-{0}/digests',matrix.arch)) }}
 
       - name: Restore distrib cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
-          path: ${{ github.workspace }}/distrib
+          path: distrib
           # Use a placeholder key that will never match for the exact key,
           # forcing GitHub to use restore-keys to find the best available cache
           key: distrib-placeholder-${{ github.run_id }}
@@ -473,6 +494,10 @@ jobs:
         # We don't want to stop the build on errors.
         # Errors are reported in "Build Status"
         continue-on-error: true
+        # Hard backstop below the 6h job kill in case build.sh's own budget can't
+        # stop in time (e.g. a single package hangs); the always() steps below
+        # still run and upload whatever completed.
+        timeout-minutes: 350
         uses: docker://ghcr.io/synocommunity/spksrc:latest
         with:
           entrypoint: ./.github/actions/build.sh
@@ -483,110 +508,19 @@ jobs:
           NOARCH_MIN_DSM72_PACKAGES: ${{ needs.prepare.outputs.noarch_min_dsm72_packages }}
           ARCH_MIN_DSM73_PACKAGES: ${{ needs.prepare.outputs.arch_min_dsm73_packages }}
           NOARCH_MIN_DSM73_PACKAGES: ${{ needs.prepare.outputs.noarch_min_dsm73_packages }}
+          VIDEODRV: ${{ needs.prepare.outputs.videodriver }}
           PUBLISH: ${{ github.event.inputs.publish }}
           API_KEY: ${{ secrets.PUBLISH_API_KEY }}
           PACKAGE_TO_PUBLISH: ${{ github.event.inputs.package }}
-          # https://github.com/SynoCommunity/spksrc/wiki/Compile-and-build-rules
+          # https://docs.synocommunity.com/developer-guide/packaging/build-rules/
           GH_ARCH: ${{ matrix.arch }}
           BUILD_ERROR_FILE: /github/workspace/build_errors.txt
           BUILD_ERROR_LOGFILE: /github/workspace/build_log_errors.txt
           BUILD_UNSUPPORTED_FILE: /github/workspace/build_unsupported.txt
           BUILD_SUCCESS_FILE: /github/workspace/build_success.txt
-
-      # Check disk space after build completes (success or failure)
-      - name: Disk Space After Build
-        if: always()
-        run: |
-          echo ""
-          echo "=== Disk Space after Build ==="
-          df -h
-
-          echo ""
-          echo "=== Largest directories after build ==="
-          du -h -d 2 /home/runner/work/spksrc/spksrc 2>/dev/null | sort -hr | head -20 || true
-          
-          # Create detailed disk usage report
-          {
-            echo ""
-            echo "=========================================="
-            echo "WORKSPACE DIRECTORIES"
-            echo "=========================================="
-            du -sh /home/runner/work/* 2>/dev/null || true
-            
-            echo ""
-            echo "=========================================="
-            echo "BUILD PACKAGES (with logs)"
-            echo "=========================================="
-            if [ -n "${{ needs.prepare.outputs.arch_packages }}" ] || [ -n "${{ needs.prepare.outputs.noarch_packages }}" ]; then
-              for pkg in ${{ needs.prepare.outputs.arch_packages }} ${{ needs.prepare.outputs.noarch_packages }}; do
-                if [ -d "spk/$pkg" ]; then
-                  echo "Package: $pkg"
-                  
-                  # Show total package directory size
-                  du -sh "spk/$pkg" 2>/dev/null || true
-                  
-                  # Show work directories if they exist
-                  work_dirs=$(find "spk/$pkg" -maxdepth 2 -type d -name "work-*" 2>/dev/null)
-                  if [ -n "$work_dirs" ]; then
-                    echo "$work_dirs" | while read work_dir; do
-                      du -sh "$work_dir" 2>/dev/null | sed 's/^/  /' || true
-                    done
-                  else
-                    echo "  n/a	spk/$pkg/work-${{ matrix.arch }}"
-                  fi
-                  
-                  # Show SPK file size if it exists
-                  if ls packages/${pkg}*.spk 2>/dev/null; then
-                    ls -lh packages/${pkg}*.spk 2>/dev/null | awk '{print "  " $5 "\tpackages/" $9}' || echo "  n/a	packages/${pkg}*.spk"
-                  else
-                    echo "  n/a	packages/${pkg}*.spk"
-                  fi
-                  
-                  echo ""
-                fi
-              done
-            else
-              echo "No package list available - scanning for build directories..."
-              find spk/ -type f -name "*.log" -o -name "work-*" 2>/dev/null | \
-                xargs -I {} dirname {} | sort -u | \
-                while read dir; do
-                  du -sh "$dir" 2>/dev/null || true
-                done
-            fi
-            
-            echo ""
-            echo "=========================================="
-            echo "OVERALL DISK STATUS"
-            echo "=========================================="
-            df -h
-            
-          } > disk_usage_build.txt
-          
-          # Also display to console
-          cat disk_usage_build.txt
-          
-          # Check if running low on disk space
-          DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | sed 's/%//')
-          if [ "$DISK_USAGE" -gt 90 ]; then
-            echo "::warning::Disk usage is at ${DISK_USAGE}% - build may have failed due to low disk space"
-          fi
-          
-          # Emergency cleanup if disk is critically full (above 95%)
-          if [ "$DISK_USAGE" -gt 95 ]; then
-            echo "::error::CRITICAL: Disk usage is at ${DISK_USAGE}% - performing emergency cleanup"
-            echo "disk_critical=true" >> $GITHUB_ENV
-            
-            # Clean up Docker to free space for diagnostics upload
-            echo "Cleaning Docker system..."
-            docker system prune -af --volumes 2>/dev/null || true
-            
-            # Remove large work directories except logs
-            echo "Cleaning large build artifacts..."
-            find . -type d -name "work-*" -exec sh -c 'find "$1" -type f ! -name "*.log" -delete' _ {} \; 2>/dev/null || true
-            
-            echo "Space after emergency cleanup:"
-            df -h
-          fi
+          BUILD_BUDGET_SECONDS: ${{ env.BUILD_BUDGET_SECONDS }}
+          BUILD_REMAINING_FILE: /github/workspace/build_remaining.txt
+          BUILD_TIMEOUT_FILE: /github/workspace/build_timeout.txt
 
       # Capture Docker logs when build fails
       - name: Capture Docker Logs on Failure
@@ -620,12 +554,38 @@ jobs:
             "build.log"
             "config.log"
             "configure.log"
+            "CMakeCache.txt"
             "CMakeOutput.log"
             "CMakeError.log"
+            "install_manifest.txt"
             "meson-log.txt"
+            ".ninja_log"
             "ninja.log"
             "cargo.log"
             "*.log"
+          )
+
+          # Patterns to collect files specific at spk creation time
+          SPK_PATTERNS=(
+            ".copy_done"
+            ".dependency_done"
+            ".icon_done"
+            ".strip_done"
+            ".stage0-tcvars_done"
+            ".stage1-tcvars_done"
+            ".stage1-tkvars_done"
+            ".wheel_done"
+            "INFO"
+            "PLIST"
+            "PACKAGE_ICON*"
+            "WIZARD_UIFILES"
+          )
+
+          # Patterns to collect toolchain and toolkit environment
+          TCVARS_PATTERNS=(
+            "tc_vars*.mk"
+            "tc_vars.cmake"
+            "tc_vars.meson-*"
           )
 
           for pkg_dir in spk/*/; do
@@ -637,27 +597,70 @@ jobs:
               | while IFS= read -r -d '' logfile; do
                   dest="collected_logs/${pkg}/$(basename "$logfile")"
                   mkdir -p "$(dirname "$dest")"
-                  cp "$logfile" "$dest"
+                  cp -p "$logfile" "$dest"
                   echo "Collected top-level: $logfile"
                 done
             done
 
-            # ── Logs inside work-<arch>-<version>/ directories ──
             find "$pkg_dir" -maxdepth 1 -type d -name "work-*" -print0 2>/dev/null \
             | while IFS= read -r -d '' work_dir; do
                 work_name=$(basename "$work_dir")
+                dest_dir="collected_logs/${pkg}/${work_name}"
+                mkdir -p "$dest_dir"
 
+                # ── Logs inside work-<arch>-<version>/ directories ──
                 for pattern in "${WORK_PATTERNS[@]}"; do
-                  find "$work_dir" -type f -name "$pattern" -print0 2>/dev/null \
-                  | while IFS= read -r -d '' logfile; do
-                      # Preserve relative path inside work dir for context
-                      rel="${logfile#${work_dir}/}"
-                      dest="collected_logs/${pkg}/${work_name}/${rel}"
-                      mkdir -p "$(dirname "$dest")"
-                      cp "$logfile" "$dest"
-                      echo "Collected work log: $logfile"
-                    done
+                  find "$work_dir" -type f -name "$pattern" -print0 2>/dev/null
+                done | sort -zu \
+                | while IFS= read -r -d '' logfile; do
+                    rel="${logfile#${work_dir}/}"
+                    dest="${dest_dir}/${rel}"
+                    mkdir -p "$(dirname "$dest")"
+                    cp -p "$logfile" "$dest"
+                    echo "Collected work log: $logfile"
                 done
+
+                # ── Toolchain/toolkit environment (tc_vars) ──
+                for pattern in "${TCVARS_PATTERNS[@]}"; do
+                  find "$work_dir" -maxdepth 1 \( -type f -o -type l \) -name "$pattern" -print0 2>/dev/null \
+                  | while IFS= read -r -d '' f; do
+                      cp -pL "$f" "$dest_dir/"
+                      echo "Collected tcvars: $f"
+                  done
+                done
+
+                # ── SPK creation state (spk cookies) ──
+                for pattern in "${SPK_PATTERNS[@]}"; do
+                  find "$work_dir" -maxdepth 1 \( -type f -o -type l \) -name "$pattern" -print0 2>/dev/null \
+                  | while IFS= read -r -d '' f; do
+                      cp -p "$f" "$dest_dir/"
+                      echo "Collected spk state: $f"
+                  done
+                done
+
+                # ── Dependency status cookies (.*_done minus SPK_PATTERNS) ──
+                exclude_args=""
+                for pattern in "${SPK_PATTERNS[@]}"; do
+                  exclude_args="$exclude_args ! -name $pattern"
+                done
+                find "$work_dir" -maxdepth 1 -type f -name ".*_done" $exclude_args -print0 2>/dev/null \
+                | while IFS= read -r -d '' f; do
+                    cp -p "$f" "$dest_dir/"
+                    echo "Collected status cookie: $f"
+                done
+
+                # ── library build state work-<arch>-<version>/install/.../lib/pkgconfig ──
+                PKGCONFIG_DIR="$work_dir/install/var/packages/$pkg/target/lib/pkgconfig"
+                if [ -d "$PKGCONFIG_DIR" ]; then
+                  find "$PKGCONFIG_DIR" -type f -name "*.pc" -print0 2>/dev/null \
+                  | while IFS= read -r -d '' f; do
+                      rel="${f#${PKGCONFIG_DIR}/}"
+                      dest="collected_logs/${pkg}/${work_name}/pkgconfig/${rel}"
+                      mkdir -p "$(dirname "$dest")"
+                      cp -p "$f" "$dest"
+                      echo "Collected pkgconfig: $f"
+                  done
+                fi
               done
           done
 
@@ -701,6 +704,8 @@ jobs:
           BUILD_ERROR_LOGFILE: /github/workspace/build_log_errors.txt
           BUILD_UNSUPPORTED_FILE: /github/workspace/build_unsupported.txt
           BUILD_SUCCESS_FILE: /github/workspace/build_success.txt
+          BUILD_REMAINING_FILE: /github/workspace/build_remaining.txt
+          BUILD_TIMEOUT_FILE: /github/workspace/build_timeout.txt
 
       # Assemble flat diagnostics and the full collected_logs tree
       # into artifacts/diagnostics/ for upload.
@@ -714,13 +719,14 @@ jobs:
           # Copy flat diagnostic files
           for file in disk_usage_start.txt disk_usage_end.txt docker_logs.txt \
                       build_errors.txt build_log_errors.txt \
-                      build_unsupported.txt build_success.txt; do
-            [ -f "$file" ] && cp "$file" "artifacts/diagnostics/$file"
+                      build_unsupported.txt build_success.txt \
+                      build_remaining.txt build_timeout.txt; do
+            [ -f "$file" ] && cp -p "$file" "artifacts/diagnostics/$file"
           done
 
           # Copy collected_logs tree (preserves pkg/work-<arch>/ structure)
           if [ -d collected_logs ] && [ -n "$(ls -A collected_logs 2>/dev/null)" ]; then
-            cp -r collected_logs/. artifacts/diagnostics/collected_logs/
+            cp -pr collected_logs/. artifacts/diagnostics/collected_logs/
             echo "Copied $(find artifacts/diagnostics/collected_logs -type f | wc -l) log files"
           else
             echo "No collected logs to copy"
@@ -740,8 +746,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: diagnostics-${{ matrix.arch }}
-          path: ${{ github.workspace }}/artifacts/diagnostics/
+          path: artifacts/diagnostics/
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 1
           compression-level: 9
 
@@ -750,26 +757,28 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Packages for ${{ matrix.arch }}
-          path: ${{ github.workspace }}/packages/*.spk
+          path: packages/*.spk
           if-no-files-found: ignore
+          include-hidden-files: true
 
   consolidate-diagnostics:
     name: Consolidate Diagnostics
-    needs: build
-    runs-on: ubuntu-26.04
-    if: always()
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    if: always() && needs.gate.outputs.should_build == 'true'
     steps:
       - name: Download all diagnostic artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: diagnostics-*
-          path: ${{ github.workspace }}/all-diagnostics
+          path: all-diagnostics
           merge-multiple: false
 
       - name: Upload consolidated diagnostics
         uses: actions/upload-artifact@v7
         with:
           name: Diagnostics
-          path: ${{ github.workspace }}/all-diagnostics/**
+          path: all-diagnostics/**
           if-no-files-found: ignore
+          include-hidden-files: true
           compression-level: 9
